@@ -1,8 +1,8 @@
 {
-  "lengthUnit": "Foot",
-  "maxVelocity": 14.5,
-  "maxAcceleration": 4.0,
-  "wheelBase": 2.1,
+  "lengthUnit": "Meter",
+  "maxVelocity": 3.048,
+  "maxAcceleration": 1.2192,
+  "wheelBase": 0.64,
   "gameName": "FIRST Power Up",
   "outputDir": "../src/main/deploy/paths"
 }

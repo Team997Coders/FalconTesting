@@ -52,7 +52,9 @@ public class Robot extends TimedRobot {
   private Rotation2d lastRotation;
   private Translation2d lastTranslation;
 
-  private double vel2FeetConversion = 10 * (1 / 2048) * (9 / 70) * (5 * Math.PI) * (1 / 12);
+  private double vel2FeetConversion;
+
+  private double leftOutput = 0.0, rightOutput = 0.0;
 
   private Trajectory traTest;
   private DifferentialDriveKinematics diffDriveKin;
@@ -76,20 +78,31 @@ public class Robot extends TimedRobot {
 
     } catch (Exception e) { e.printStackTrace(); }
 
+    vel2FeetConversion = 10;
+    System.out.println(vel2FeetConversion);
+    vel2FeetConversion *= ((double)1 / (double)2048);
+    System.out.println(vel2FeetConversion);
+    vel2FeetConversion *= ((double)9 / (double)70);
+    System.out.println(vel2FeetConversion);
+    vel2FeetConversion *= ((double)5 * Math.PI);
+    System.out.println(vel2FeetConversion);
+    vel2FeetConversion *= ((double)1 / (double)12);
+    System.out.println(vel2FeetConversion);
+
     l1 = new TalonFX(4);
-    l2 = new TalonFX(5);
-    r1 = new TalonFX(6);
-    r2 = new TalonFX(7);
+    l2 = new TalonFX(3);
+    r1 = new TalonFX(1);
+    r2 = new TalonFX(2);
 
     l1.configFactoryDefault(10);
     l2.configFactoryDefault(10);
     r1.configFactoryDefault(10);
     r2.configFactoryDefault(10);
 
-    l1.setInverted(false);
-    l2.setInverted(false);
-    r1.setInverted(true);
-    r2.setInverted(true);
+    l1.setInverted(true);
+    l2.setInverted(true);
+    r1.setInverted(false);
+    r2.setInverted(false);
 
     l2.follow(l1);
     r2.follow(r1);
@@ -99,11 +112,24 @@ public class Robot extends TimedRobot {
     l1.setSelectedSensorPosition(0, 0, 10);
     r1.setSelectedSensorPosition(0, 0, 10);
 
-    l1.config_kP(0, 0.7, 10);
-    l1.config_kF(0, 1 / 21777, 10);
+    l1.configPeakOutputForward(1, 10);
+    l1.configPeakOutputReverse(-1, 10);
+
+    r1.configPeakOutputForward(1, 10);
+    r1.configPeakOutputReverse(-1, 10);
+
+    double p = 0.13;
+    double d = (double)3;
+    double f = (double)1023 / (double)19990;
     
-    r1.config_kP(0, 0.7, 10);
-    r1.config_kF(0, 1 / 21777, 10);
+    l1.config_kP(0, p, 10);
+    //l1.config_kI(0, 0.000007, 10);
+    l1.config_kD(0, d, 10);
+    l1.config_kF(0, f, 10); // 1 / 21777 also 19990
+    
+    r1.config_kP(0, p, 10);
+    r1.config_kD(0, d, 10);
+    r1.config_kF(0, f, 10);
     
     controller = new XboxController(0);
 
@@ -138,16 +164,20 @@ public class Robot extends TimedRobot {
     // SmartDashboard.putNumber("Drive/Right Vel", r1.getSelectedSensorVelocity(0));
 
     SmartDashboard.putNumber("Drive/Left Ft/s", getAlteredSpeed(l1));
+    //SmartDashboard.putNumber("Drive/Left Ft/s", l1.getSelectedSensorVelocity(0));
     SmartDashboard.putNumber("Drive/Right Ft/s", getAlteredSpeed(r1));
     SmartDashboard.putNumber("Drive/Left Ft", getAlteredPosition(l1));
     SmartDashboard.putNumber("Drive/Right Ft", getAlteredPosition(r1));
+
+    SmartDashboard.putNumber("Auto/Left Output", leftOutput);
+    SmartDashboard.putNumber("Auto/Right Output", rightOutput);
 
     double pos = l1.getSelectedSensorPosition(0);// ((double)l1.getSelectedSensorPosition(0)) * (1 / 2048) *
                                                  // gearingFactor * (6 / 12);
     pos /= 2048;
     pos *= gearingFactor;
     pos *= ((double) 5.5 * Math.PI) / (double) 12;
-    System.out.println("Pos: " + pos);
+    //System.out.println("Pos: " + pos);
     // SmartDashboard.putNumber("Drive/Right Ft", getAlteredPosition(false));
 
     if (l1.getSelectedSensorVelocity(0) > maxSpeed)
@@ -156,14 +186,13 @@ public class Robot extends TimedRobot {
   }
 
   public double getAlteredSpeed(TalonFX motor) {
-    double a = (double) motor.getSelectedSensorVelocity(0);
-    a *= (double) 10;
-    return a * gearingFactor;
+    //double a = (double) motor.getSelectedSensorVelocity(0);
+    //a *= (double) 10;
+    return vel2f(motor.getSelectedSensorVelocity(0));
   }
 
   public double getAlteredPosition(TalonFX motor) {
-    double a = (double) motor.getSelectedSensorPosition(0);
-    return a * gearingFactor;
+    return vel2f(motor.getSelectedSensorPosition(0)) / (double)10;
   }
 
   /**
@@ -234,47 +263,62 @@ public class Robot extends TimedRobot {
       r1.set(ControlMode.PercentOutput, right);
     } else {
       if (!Double.isFinite(startTime)) {
-        startTime = (double)System.currentTimeMillis() / 1000;
+        startTime = (double)System.currentTimeMillis() / (double)1000;
 
         lastTime = startTime;
         lastRotation = traTest.getInitialPose().getRotation();
         lastTranslation = traTest.getInitialPose().getTranslation();
+
+        l1.setSelectedSensorPosition(0, 0, 10);
+        r1.setSelectedSensorPosition(0, 0, 10);
       }
 
-      double currentTime = (double)System.currentTimeMillis() / 1000;
+      double currentTime = (double)System.currentTimeMillis() / (double)1000;
 
       Trajectory.State currentState = traTest.sample(currentTime - startTime);
       Translation2d translation = currentState.poseMeters.getTranslation();
       Rotation2d rotation = currentState.poseMeters.getRotation();
       SmartDashboard.putNumber("Auto/Translation X", translation.getX());
       SmartDashboard.putNumber("Auto/Translation Y", translation.getY());
+      SmartDashboard.putNumber("Auto/Translation", translation.getNorm());
       SmartDashboard.putNumber("Auto/Velocity", currentState.velocityMetersPerSecond);
 
       Translation2d diffTrans = translation.minus(lastTranslation);
       Rotation2d diffRota = rotation.minus(lastRotation);
       double deltaT = currentTime - lastTime;
+      //diffTrans = diffTrans.div(deltaT);
 
-      double xV = diffTrans.getX() / deltaT;
-      double yV = diffTrans.getY() / deltaT;
-      double rV = diffRota.getRadians() / deltaT;
+      //double xV = diffTrans.getX() / deltaT;
+      //double yV = diffTrans.getY() / deltaT;
+      double x = (diffTrans.getX() / diffTrans.getNorm()) * currentState.velocityMetersPerSecond;
+      double y = (diffTrans.getY() / diffTrans.getNorm()) * currentState.velocityMetersPerSecond;
+      double rV = currentState.curvatureRadPerMeter * currentState.velocityMetersPerSecond;
+      //currentState.
 
-      ChassisSpeeds uhoh = new ChassisSpeeds(xV, yV, rV);
+      ChassisSpeeds uhoh = new ChassisSpeeds(currentState.velocityMetersPerSecond, 0, rV);
+      //ChassisSpeeds uhoh = new ChassisSpeeds(diffTrans.getX(), diffTrans.getY(), rV);
       DifferentialDriveWheelSpeeds wheelSpeeds = diffDriveKin.toWheelSpeeds(uhoh);
       double leftFtPS = m2f(wheelSpeeds.leftMetersPerSecond);
       double rightFtPS = m2f(wheelSpeeds.rightMetersPerSecond);
 
-      double leftOutput = f2vel(leftFtPS);
-      double rightOutput = f2vel(rightFtPS);
+      //leftOutput = f2vel(5);
+      //rightOutput = f2vel(5);
+      leftOutput = f2vel(leftFtPS);
+      rightOutput = f2vel(rightFtPS);
 
       //double speedToOutputConversion = 1 / ()
 
       SmartDashboard.putNumber("Auto/Left Ft s", leftFtPS);
       SmartDashboard.putNumber("Auto/Right Ft s", rightFtPS);
 
-      System.out.println();
+      //System.out.println("LeftFtPS: " + leftFtPS);
+      //System.out.println("RightFtPS: " + rightFtPS);
 
-      //l1.set(ControlMode.Velocity, leftOutput);
-      //r1.set(ControlMode.Velocity, rightOutput);
+      l1.set(ControlMode.Velocity, leftOutput);
+      r1.set(ControlMode.Velocity, rightOutput);
+
+      SmartDashboard.putNumber("Auto/LeftPIDOut", l1.getClosedLoopError(0));
+      SmartDashboard.putNumber("Auto/RightPIDOut", r1.getClosedLoopError(0));
 
       if (currentState == traTest.getStates().get(traTest.getStates().size() - 1)) {
         startTime = Double.NaN;
@@ -287,11 +331,12 @@ public class Robot extends TimedRobot {
   }
 
   public double vel2f(double vel) {
-    return vel * vel2FeetConversion;
+    return (double)vel * (double)vel2FeetConversion;
   }
 
   public double f2vel(double feet) {
-    return feet / vel2FeetConversion;
+    System.out.println("F2Vel conversion = " + (1 / vel2FeetConversion));
+    return (double)feet / (double)vel2FeetConversion;
   }
 
   /**
